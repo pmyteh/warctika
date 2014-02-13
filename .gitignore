@@ -5,4 +5,5 @@ build/
 .coverage
 htmlcov/
 virtualenv
-RefDocs
+RefDocs/
+scratch/
