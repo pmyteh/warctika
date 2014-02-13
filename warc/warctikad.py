@@ -49,50 +49,6 @@ from StringIO import StringIO
 #        return _private_len_variable
 
 
-# Monkey patch WARCRecord to get some useful functions for producing
-# conversion records. It's unclear if these should be merged upstream, as
-# they're not particularly clean interfaces and of rather specialised interest.
-class WARCRecord:
-    def is_http_response(self):
-        """Return True if is HTTP/HTTPS response record, else False"""
-        if self.type == 'response' and self.url.startswith('http'):
-            return True
-        return False
-
-    def get_underlying_mimetype(self):
-        """Return the MIME type of the underlying content, for a given WARC
-           response or resource record. If no type recorded, return None"""
-        try:
-            if record.type == 'response':
-                # TODO: Test thoroughly!
-                # Stuff the response payload into an HTTPMessage then ask for
-                # the Content-Type.
-                # Alternative: RegExp for the first case-insensitive
-                # content-type in the payload, returning the rest of the line
-                # if there. If not, return None.
-                return httplib.HTTPMessage(StringIO(self.payload)).gettype()
-            elif self.type == 'resource':
-                try:
-                    return record['Content-Type']
-                except KeyError:
-                    return None
-            else:
-                raise Exception("Unsupported WARC record type in "
-                                "get_underlying_mimetype()")
-        except KeyError:
-            return None
-
-    def get_underlying_content(self):
-        """Return the underlying content for response and resource records.
-        i.e., just the resource file or HTTP body"""
-        if self.is_http_response():
-            return re.split(u'\n\n', self.body, maxsplit=1)[1]
-        elif self.type == 'resource':
-            return self.payload
-        else:
-            raise Exception("Unsupported WARC record type in "
-                            "get_underlying_content()")
-
 class WARCTikaProcessor:
     """Processes WARCs by decomposing them, sending the records through
        Apache Tika to produce plain text, then reconstructing a WARC file
