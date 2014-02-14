@@ -34,7 +34,6 @@ import re
 # TODO: Check if necessary
 #import requests
 from StringIO import StringIO
-#from warc import WARCHeader, WARCRecord as WARCRecordBase, WARCFile
 
 
 #####
@@ -262,7 +261,9 @@ if __name__ == '__main__':
     warcprocessor=WARCTikaProcessor()
     oldsuffix = 'warc.gz'
     newsuffix = '-ViaTika.warc.gz'
-    handler = WARCNotifyHandler(warcprocessor)
+    handler = WARCNotifyHandler(warcprocessor=warcprocessor,
+                                oldsuffix=oldsuffix,
+                                newsuffix=newsuffix)
 
     notifier = pyinotify.Notifier(wm, handler)
 
@@ -270,11 +271,12 @@ if __name__ == '__main__':
     # files, in case we restarted part-way through a crawl.
     for fn in os.listdir(dirname):
         if fn.endswith(oldsuffix) and not fn.endswith(newsuffix):
-            print "Processing existing file:"+fn
+            print "Processing existing file:"+dirname+"/"+fn
 #            try:
+            print dirname
             warcprocessor.process(
-                infn=fn,
-                outfn=re.sub(oldsuffix+'$', newsuffix, fn) )
+                infn=dirname+"/"+fn,
+                outfn=re.sub(oldsuffix+'$', newsuffix, dirname+"/"+fn) )
 #            except Exception as e:
 #                print ("Warning: Startup processor failed to process "+
 #                       "file "+fn+": "+str(e)+str(e.args)+
