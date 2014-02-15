@@ -1,11 +1,5 @@
 #!/usr/bin/env python
-"""Watch a directory for new WARC files, then process them by extracting
-non-text content with Apache Tika and re-writing a WARC file with
-transformation records in place of the original.
-
-Requirements: TikaJAXRS running on a given port and auto-reloaded.
-
-Copyright 2014 Tom Nicholls
+"""Copyright 2014 Tom Nicholls
 
 This work is available under the terms of the GNU General Purpose Licence
 This program is free software: you can redistribute it and/or modify
@@ -46,10 +40,10 @@ wm = pyinotify.WatchManager() # Watch Manager
 # watched events
 # TODO: Consider if we also want IN_CLOSE_WRITE (depends on the order that
 # heritrix finishes writing, closes and renames the file. 
-mask = pyinotify.IN_CREATE | pyinotify.IN_MOVED_TO
+mask = pyinotify.IN_CREATE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM
 wm.add_watch(dirname, mask)
 warcprocessor = warctika.WARCTikaProcessor()
-oldsuffix = 'warc.gz'
+oldsuffix = '.warc.gz'
 newsuffix = '-ViaTika.warc.gz'
 handler = warctika.WARCNotifyHandler(warcprocessor=warcprocessor,
                                      oldsuffix=oldsuffix,
@@ -59,19 +53,24 @@ notifier = pyinotify.Notifier(wm, handler)
 # On first run, loop through watched directory and handle all existing
 # files, in case we restarted part-way through a crawl.
 for fn in os.listdir(dirname):
+    infn = dirname+"/"+fn
+    outfn = re.sub(oldsuffix+'$', newsuffix, infn)
     if fn.endswith(oldsuffix) and not fn.endswith(newsuffix):
-        print "Processing existing file:"+dirname+"/"+fn
+#        if os.path.exists(outfn):
+#            print "Existing file", infn, "has already been processed. Skipping."
+#            continue
+        print "Processing existing file:", infn
 #            try:
-        print dirname
-        warcprocessor.process(
-            infn=dirname+"/"+fn,
-            outfn=re.sub(oldsuffix+'$', newsuffix, dirname+"/"+fn) )
+        warcprocessor.process(infn=infn, outfn=outfn)
+        os.remove(infn)
 #            except Exception as e:
+#               XXX cleanup: delete -ViaTika.warc.gz file if present.
 #                print ("Warning: Startup processor failed to process "+
 #                       "file "+fn+": "+str(e)+str(e.args)+
 #                       "\n\tGiving up on it.")
 #                raise e
 
+print "Finished processing existing files. Now watching for new WARC files."
 # Run forever
 notifier.loop()
 

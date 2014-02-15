@@ -136,6 +136,10 @@ class WARCHeader(CaseInsensitiveDict):
 class WARCRecord(object):
     """The WARCRecord object represents a WARC Record.
     """
+    # TODO: Separate out subclasses for the different record types, with
+    # appropriate easy-access methods (warcinfo record body as a dict; separate
+    # body and header parts for response methods etc.) and methods for
+    # re-writing these to file again.
     def __init__(self, header=None, payload=None,  headers={}, defaults=True):
         """Creates a new WARC record.
         """
@@ -253,17 +257,24 @@ class WARCRecord(object):
         """Return the MIME type of the underlying content, for a given WARC
            response or resource record. If no type recorded, return None"""
         try:
-            if record.type == 'response':
-                # TODO: Test thoroughly!
-                # Stuff the response payload into an HTTPMessage then ask for
-                # the Content-Type.
-                # Alternative: RegExp for the first case-insensitive
+            if self.type == 'response':
+                # RegExp for the first case-insensitive
                 # content-type in the payload, returning the rest of the line
                 # if there. If not, return None.
-                return httplib.HTTPMessage(StringIO(self.payload)).gettype()
+                try:
+                    headers = re.split(u'\n\n',
+                                       self.payload,
+                                       maxsplit=1
+                                      )[0]
+                    return re.search(r'^Content-Type: (.*)$',
+                                     headers,
+                                     re.IGNORECASE | re.MULTILINE
+                                    ).group(1)
+                except Exception:
+                    return None
             elif self.type == 'resource':
                 try:
-                    return record['Content-Type']
+                    return self['Content-Type']
                 except KeyError:
                     return None
             else:
@@ -276,7 +287,7 @@ class WARCRecord(object):
         """Return the underlying content for response and resource records.
         i.e., just the resource file or HTTP body"""
         if self.is_http_response():
-            return re.split(u'\n\n', self.body, maxsplit=1)[1]
+            return re.split(u'\n\n', self.payload, maxsplit=1)[1]
         elif self.type == 'resource':
             return self.payload
         else:
@@ -418,7 +429,7 @@ class WARCReader:
             return None
 
         self.current_payload = FilePart(fileobj, header.content_length)
-        record = WARCRecord(header, self.current_payload, defaults=False)
+        record = WARCRecord(header, self.current_payload.read(), defaults=False)
         return record
 
     def _read_payload(self, fileobj, content_length):
