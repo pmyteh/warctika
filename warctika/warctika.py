@@ -9,9 +9,8 @@ Copyright 2014 Tom Nicholls
 
 This work is available under the terms of the GNU General Purpose Licence
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 2 of the License, or
-(at your option) any later version.
+it under the terms of version 2 of the GNU General Public License as published
+by the Free Software Foundation.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -30,10 +29,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 import os
 import time
 import pyinotify
-import warc
 import re
 import requests
 import copy
+from .warc import WARCFile, WARCRecord
 
 
 #####
@@ -100,8 +99,8 @@ class WARCTikaProcessor:
     def process(self, infn, outfn):
         """Process a WARC at a given infn, producing plain text via Tika
         where suitable, and writing a new WARC file to outfn."""
-        inwarc = warc.WARCFile(infn, 'rb')
-        outwarc = warc.WARCFile(outfn, 'wb')
+        inwarc = WARCFile(infn, 'rb')
+        outwarc = WARCFile(outfn, 'wb')
         print "Processing %s to %s." % (infn, outfn)
         for record in inwarc:
 #            print "Processing "+record.type
@@ -123,8 +122,8 @@ class WARCTikaProcessor:
 #                   str(e.message)+"\n\tWriting old record to new WARC.")
 #        finally:
             outwarc.write_record(
-					warc.WARCRecord(header=record.header,
-                    payload=record.payload, # XXX or record.payload.read() or something
+					WARCRecord(header=record.header,
+                    payload=record.payload,
                     defaults=False))
         inwarc.close()
         outwarc.close()
@@ -169,7 +168,7 @@ class WARCTikaProcessor:
         # defaults=true ensures (amongst other things) that the content-length
         # field is regenerated.
 #        print outcontent, str(outcontent)
-        return warc.WARCRecord(outheader, payload=outcontent, defaults=True)
+        return WARCRecord(outheader, payload=outcontent, defaults=True)
 
     def tikaise(self, content, mimetype):
         """Process a file through Apache Tika, reducing to plain text
