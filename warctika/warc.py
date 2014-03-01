@@ -4,7 +4,14 @@ warc.warc
 
 Python library to work with WARC files.
 
+Note that reading in a WARCFile/WARCRecord and then writing it out again will
+scramble the order of the headers (they're stored in a dict, so come out in
+an arbitrary order). This means that 'diff' will detect differences even though
+they are functionally identical in terms of adherence to the WARC spec.
+
 :copyright: (c) 2012 Internet Archive
+Alterations (including to the interfaces) made as part of the warctika library
+by Tom Nicholls in 2014: https://github.com/pmyteh/warctika
 """
 
 import __builtin__
@@ -260,7 +267,7 @@ class WARCRecord(object):
         """Return the MIME type of the underlying content, for a given WARC
            response, resource or conversion record.
            If no type recorded, return None"""
-         if self.type == 'response':
+        if self.type == 'response':
             # RegExp for the first case-insensitive
             # content-type in the payload, returning the rest of the line
             # if there. If not, return None.

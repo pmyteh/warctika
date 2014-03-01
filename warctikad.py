@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 """Copyright 2014 Tom Nicholls
 
+Process a directory of Web ARChive files through the warctika library to
+reduce binary document formats to plain text 'conversion' records.
+
 This work is available under the terms of the GNU General Purpose Licence
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
