@@ -224,14 +224,13 @@ class WARCTikaProcessor:
         d.pop('WARC-Payload-Digest', None)
         d.pop('Content-Length', None)
         d.pop('WARC-Refers-To', None)
-        # Not valid for a new record
-        d.pop('WARC-Record-ID', None)
+        # If we're throwing away the old record, this is only marginally
+        # sensible, but the spec says "should".
+        d['WARC-Refers-To'] = d.pop('WARC-Record-ID', None)
 
         # New type and payload Content-Type.
         d['WARC-Type'] = "conversion"
         d['Content-Type'] = "text/plain"
-        # As we're throwing away the old record, this isn't sensible.
-        #d['WARC-Refers-To'] = d['WARC-Record-ID']
         #d['WARC-Record-ID'] = "<urn:uuid:%s>" % uuid.uuid1()
         return d
 

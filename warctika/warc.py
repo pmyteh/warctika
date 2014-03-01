@@ -176,7 +176,10 @@ class WARCRecord(object):
 
     @property
     def url(self):
-        """The value of the WARC-Target-URI header if the record is of type "response"."""
+        """The value of the WARC-Target-URI header. This should be present
+        if the record is of types "response", "resource", "request", "revisit",
+        "conversion" and "continuation". It may be present for "metadata", but
+        must not be present for "warcinfo"."""
         return self.header.get('WARC-Target-URI')
 
     @property
@@ -255,40 +258,38 @@ class WARCRecord(object):
 
     def get_underlying_mimetype(self):
         """Return the MIME type of the underlying content, for a given WARC
-           response or resource record. If no type recorded, return None"""
-        try:
-            if self.type == 'response':
-                # RegExp for the first case-insensitive
-                # content-type in the payload, returning the rest of the line
-                # if there. If not, return None.
-                try:
-                    headers = re.split(u'\n\n',
-                                       self.payload,
-                                       maxsplit=1
-                                      )[0]
-                    return re.search(r'^Content-Type: (.*)$',
-                                     headers,
-                                     re.IGNORECASE | re.MULTILINE
-                                    ).group(1)
-                except Exception:
-                    return None
-            elif self.type == 'resource':
-                try:
-                    return self['Content-Type']
-                except KeyError:
-                    return None
-            else:
-                raise Exception("Unsupported WARC record type in "
-                                "get_underlying_mimetype()")
-        except KeyError:
-            return None
+           response, resource or conversion record.
+           If no type recorded, return None"""
+         if self.type == 'response':
+            # RegExp for the first case-insensitive
+            # content-type in the payload, returning the rest of the line
+            # if there. If not, return None.
+            try:
+                headers = re.split(u'\n\n',
+                                   self.payload,
+                                   maxsplit=1
+                                  )[0]
+                return re.search(r'^Content-Type: (.*)$',
+                                 headers,
+                                 re.IGNORECASE | re.MULTILINE
+                                ).group(1)
+            except Exception:
+                return None
+        elif self.type == 'resource' or self.type == 'conversion':
+            try:
+                return self['Content-Type']
+            except KeyError:
+                return None
+        else:
+            raise Exception("Unsupported WARC record type in "
+                            "get_underlying_mimetype()")
 
     def get_underlying_content(self):
-        """Return the underlying content for response and resource records.
-        i.e., just the resource file or HTTP body"""
+        """Return the underlying content for response, resource and
+        conversion records. i.e., just the resource file or HTTP body"""
         if self.is_http_response():
             return re.split(u'\n\n', self.payload, maxsplit=1)[1]
-        elif self.type == 'resource':
+        elif self.type == 'resource' or self.type == 'conversion':
             return self.payload
         else:
             raise Exception("Unsupported WARC record type in "
