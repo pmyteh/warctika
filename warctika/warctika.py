@@ -89,7 +89,7 @@ class WARCTikaProcessor:
         self._description = (
             "Items collected with content types matching the following "
             "regular expressions have been processed by Apache Tika to "
-            "produce plain text formats for storage. These processed files "
+            "produce plain text formats for storage. These processed items "
             "have been stored as WARC conversion records: ")
         for item in self._mimemappings:
             self._description += item[0]+'; '
@@ -265,7 +265,7 @@ class WARCNotifyHandler(pyinotify.ProcessEvent):
                        "file "+event.pathname+": "+str(e)+str(e.args)+
                        "\n\tGiving up on it.")
                 raise e
-        os.remove(event.pathname)
+            os.remove(event.pathname)
         print "Finished handling", event.pathname
     def process_IN_MOVE_TO(self, event):
         print "IN_MOVE_TO called for "+event.pathname
