@@ -295,7 +295,13 @@ class WARCRecord(object):
         """Return the underlying content for response, resource and
         conversion records. i.e., just the resource file or HTTP body"""
         if self.is_http_response():
-            return re.split(u'\n\n', self.payload, maxsplit=1)[1]
+            try:
+                c = re.split(u'\n\n', self.payload, maxsplit=1)[1]
+            except IndexError:
+                # The payload doesn't seem to be an HTTP body. Let's give it
+                # in full.
+                c = self.payload
+            return c
         elif self.type == 'resource' or self.type == 'conversion':
             return self.payload
         else:
