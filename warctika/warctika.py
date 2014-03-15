@@ -244,7 +244,7 @@ class WARCNotifyHandler(pyinotify.ProcessEvent):
                       oldsuffix='.warc.gz',
                       newsuffix='-ViaTika.warc.gz'):
         if not warcprocessor:
-            self.warcprocessor = WARCTikaProcessor()
+            warcprocessor = WARCTikaProcessor()
         self.warcprocessor = warcprocessor
         self.oldsuffix = oldsuffix
         self.newsuffix = newsuffix

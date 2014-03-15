@@ -28,7 +28,7 @@ import os
 import pyinotify
 import warctika
 import re
-
+import time
 
 if len(sys.argv) < 2:
     print "Must give name of WARC directory to watch"
@@ -67,7 +67,8 @@ while True:
             print "Processing existing file:", infn
     #            try:
             warcprocessor.process(infn=infn, outfn=outfn)
-            os.unlink(infn)
+            print "Not deleting:", infn
+    #        os.unlink(infn)
     #            except Exception as e:
     #               XXX cleanup: delete -ViaTika.warc.gz file if present.
     #                print ("Warning: Startup processor failed to process "+
