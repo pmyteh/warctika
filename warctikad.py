@@ -67,14 +67,15 @@ while True:
             print "Processing existing file:", infn
     #            try:
             warcprocessor.process(infn=infn, outfn=outfn)
-            print "Not deleting:", infn
-    #        os.unlink(infn)
+    #        print "Not deleting:", infn
+            os.unlink(infn)
     #            except Exception as e:
     #               XXX cleanup: delete -ViaTika.warc.gz file if present.
     #                print ("Warning: Startup processor failed to process "+
     #                       "file "+fn+": "+str(e)+str(e.args)+
     #                       "\n\tGiving up on it.")
     #                raise e
+            print "Done."
     time.sleep(15) 
 
 #print "Finished processing existing files. Now watching for new WARC files."
