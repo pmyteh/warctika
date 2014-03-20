@@ -21,6 +21,8 @@ import logging
 import re
 from cStringIO import StringIO
 import hashlib
+# XXX
+import sys
 
 from . import gzip2
 from .utils import CaseInsensitiveDict, FilePart
@@ -279,12 +281,12 @@ class WARCRecord(object):
                 return re.search(r'^Content-Type: (.*)$',
                                  headers,
                                  re.IGNORECASE | re.MULTILINE
-                                ).group(1)
+                                ).group(1).rstrip('\r\n')
             except Exception:
                 return None
         elif self.type == 'resource' or self.type == 'conversion':
             try:
-                return self['Content-Type']
+                return self['Content-Type'].rstrip('\r\n')
             except KeyError:
                 return None
         else:
@@ -296,7 +298,7 @@ class WARCRecord(object):
         conversion records. i.e., just the resource file or HTTP body"""
         if self.is_http_response():
             try:
-                c = re.split(u'\n\n', self.payload, maxsplit=1)[1]
+                c = re.split(r'(\r\n\r\n|\n\n|\r\r)', self.payload, maxsplit=1)[2]
             except IndexError:
                 # The payload doesn't seem to be an HTTP body. Let's give it
                 # in full.

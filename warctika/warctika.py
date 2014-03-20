@@ -32,6 +32,7 @@ import pyinotify
 import re
 import requests
 import copy
+from collections import defaultdict
 from .warc import WARCFile, WARCRecord
 
 
@@ -94,6 +95,8 @@ class WARCTikaProcessor:
         for item in self._mimemappings:
             self._description += item[0]+'; '
         self._description = self._description[:-2]+'.'
+        # Count of return codes
+        self.tikacodes = defaultdict(int)
         print "Initialised WARCTikaProcessor"
 
     def process(self, infn, outfn):
@@ -103,7 +106,6 @@ class WARCTikaProcessor:
         outwarc = WARCFile(outfn, 'wb')
         print "Processing %s to %s." % (infn, outfn)
         for record in inwarc:
-#            print "Processing "+record.type
 #        try:
             if record.type == 'warcinfo':
                 self.add_description_to_warcinfo(record)
@@ -125,6 +127,8 @@ class WARCTikaProcessor:
 					WARCRecord(header=record.header,
                     payload=record.payload,
                     defaults=False))
+        print "****Finished file. Tika status codes:", self.tikacodes.items()
+        self.tikacodes = defaultdict(int)
         inwarc.close()
         outwarc.close()
 
@@ -163,7 +167,11 @@ class WARCTikaProcessor:
         if not inmimetype:
             # Content-Type should not be Tikaised
             return inrecord
-        outcontent = self.tikaise(inrecord.get_underlying_content(), inmimetype)
+        try:
+            outcontent = self.tikaise(inrecord.get_underlying_content(), inmimetype)
+        except Exception as e:
+            print e, "processing", inrecord.url
+            return inrecord
         outheader = self.generate_cv_header(inrecord.header)
         # defaults=true ensures (amongst other things) that the content-length
         # field is regenerated.
@@ -181,10 +189,13 @@ class WARCTikaProcessor:
                                 headers={'Content-Type': mimetype}) 
         except requests.ConnectionError:
             print "Unable to connect to Tika; will wait and retry."
-            time.sleep(120) 
+            time.sleep(120)
+        self.tikacodes[resp.status_code] += 1
         if resp.status_code != 200:
-            raise Exception("Bad response code from Tika ("
-                            +resp.status_code+")")
+            raise Exception("Bad response code from Tika ("+
+                            str(resp.status_code)+") "+
+                            "trying to submit Content-Type "+mimetype)
+#        print "Success from Tika submitting Content-Type:",mimetype
         return resp.content
 
 #    def strip_header(self, obj):
@@ -196,6 +207,7 @@ class WARCTikaProcessor:
         """Return a canonical mimetype if mimetype matches our list to process,
            else False.
            None is always processable, but Tika will need to guess the type."""
+#        print "make_canonical_mimetype: received", mimetype
         if mimetype is None:
             # Note: we can make Tika guess the Content-Type without assistance
             # by setting it to the root type 'application/octet-stream'.
