@@ -100,7 +100,6 @@ class WARCTikaProcessor:
         # These are objects of type RecordStream (or a subclass), unlike with
         # the IA library
         inwf = WarcRecord.open_archive(infn, mode='rb')
-        parser = inwf.make_parser()
         outwf = WarcRecord.open_archive(outfn, mode='wb')
         print "Processing %s to %s." % (infn, outfn)
         for record in inwf:
@@ -109,23 +108,23 @@ class WARCTikaProcessor:
                 self.add_description_to_warcinfo(record)
             elif (record.type == WarcRecord.RESPONSE
                     or record.type == WarcRecord.RESOURCE):
-                if 'WARC-Segment-Number' in record.header:
-                    raise Exception("Segmented record. Skipping.")
-                record = self.generate_new_record(record)
+                if record.get_header('WARC-Segment-Number'):
+                    print "Segmented response/resource record. Not processing."
+                else:
+                    record = self.generate_new_record(record)
             # If 'metadata', 'request', 'revisit', 'continuation',
             # 'conversion' or something exotic, we can't do anything more
             # interesting than immediately re-writing it to the new file
-            else:
-                pass
+
 #        except Exception as e:
 #            print ("Warning: WARCTikaProcessor.process() failed on "+
 #                   record.header.record_id+": "+str(e.args)+", "+
 #                   str(e.message)+"\n\tWriting old record to new WARC.")
 #        finally:
             newrecord = WARCRecord(headers=record.header,
-                    content=record.payload,
+                    content=record.content,
                     defaults=False)
-            outwf.write_record(newrecord)
+            outwf.write(newrecord)
         print "****Finished file. Tika status codes:", self.tikacodes.items()
         self.tikacodes = defaultdict(int)
         inwf.close()
@@ -134,24 +133,29 @@ class WARCTikaProcessor:
     def add_description_to_warcinfo(self, record):
         """Add a description of our mangling to a warcinfo record's decription
         tag, creating it if necessary"""
-        # XXX: Fix payload setting for new library
         if record.type != WarcRecord.WARCINFO:
             raise Exception("Non-warcinfo record passed to "
                             "add_description_to_warcinfo")
 
-        match = re.search(r'^(description: .*)$', record.payload, re.I | re.M)
+        match = re.search(r'^(description: .*)$',
+                          record.content[1], re.I | re.M)
         if match:
-            record.payload = (record.payload[:match.end(0)-1] +
-                              '. ' +
-                              self._description +
-                              record.payload[match.end(0):])
+            # It's a bit naughty setting _content directly, but there's
+            # no published interface for changing the content of a record
+            # once it's been established. This is probably because most
+            # WARC users are archivists.
+            record._content = (record.content[0],
+                               record.content[1][:match.end(0)-1] +
+                                   '. ' + self._description +
+                                   record.content[1][match.end(0):])
         else:
-            record.payload = ("description: "+self._description+"\n"+
-                              record.payload)
-#        print record.payload
+            record._content = (record.content[0],
+                               "description: "+self._description+"\n"+
+                                   record.content[1])
 
         # Recalculate the record length
-        record.set_header(WarcRecord.CONTENT_LENGTH, str(len(record.payload)))
+        record.set_header(WarcRecord.CONTENT_LENGTH,
+                          str(len(record.content[1])))
 
 
     def generate_new_record(self, inrecord):
@@ -159,35 +163,34 @@ class WARCTikaProcessor:
            input WARC record. If conversion is not possible, return the
            input record."""
         # Check if handleable:
-        if (not inrecord.is_http_response()
+        if (not inrecord.is_http_response() # XXX warcutils fix
                 and not inrecord.type == WarcRecord.RESOURCE):
             return inrecord
 
-        inmimetype = inrecord.get_underlying_mimetype()
-        inmimetype = self.make_canonical_mimetype(inmimetype)
+        inmimetype = inrecord.get_underlying_mimetype() # XXX warcutils fix
+        inmimetype = self.make_canonical_mimetype(inmimetype) # XXX warcutils fix (parse using httplibs?)
         if not inmimetype:
             # Content-Type should not be Tikaised
             return inrecord
         try:
-            outcontent = self.tikaise(inrecord.get_underlying_content(), inmimetype)
+            outcontent = self.tikaise((inmimetype, inrecord.get_underlying_content())), # XXX warcutils fix
         except Exception as e:
             print e, "processing", inrecord.url
             return inrecord
         outheader = self.generate_cv_header(inrecord)
-        # defaults=true ensures (amongst other things) that the content-length
-        # field is regenerated.
-#        print outcontent, str(outcontent)
-        return WARCRecord(outheader, payload=outcontent, defaults=True)
+        # The Content-length header is regenerated, and the Content-Type
+        # header is replaced by content[0].
+        return WarcRecord(headers=outheader, content=outcontent)
 
-    def tikaise(self, content, mimetype):
+    def tikaise(self, content):
         """Process a file through Apache Tika, reducing to plain text
            if possible. """
         # TODO: Consider carefully whether to send Tika the filename to help
         # guess the MIME type, which can be done by setting the (unofficial)
         # {'File-Name': string} header.
         try:
-            resp = requests.put(self._tikaurl, data=content,
-                                headers={'Content-Type': mimetype}) 
+            resp = requests.put(self._tikaurl, data=content[1],
+                                headers={'Content-Type': content[0]}) 
         except requests.ConnectionError:
             print "Unable to connect to Tika; will wait and retry."
             time.sleep(120)
@@ -195,9 +198,9 @@ class WARCTikaProcessor:
         if resp.status_code != 200:
             raise Exception("Bad response code from Tika ("+
                             str(resp.status_code)+") "+
-                            "trying to submit Content-Type "+mimetype)
+                            "trying to submit Content-Type "+content[0])
         print "Success from Tika:",mimetype, "Length:", len(resp.content)
-        return resp.content
+        return ('text/plain', resp.content)
 
 #    def strip_header(self, obj):
 #        """Strips the first HTTP/WARC header from an object, returning the
@@ -227,27 +230,24 @@ class WARCTikaProcessor:
            Note that we do not handle Content-Length or the various
            kinds of digests as these will be automatically produced
            by the WARC record creation process with defaults=True."""
-        # XXX: Fix for warcutils
         # Build new header based upon the old header and new content
         d = copy.copy(oldrecord.header)
 
         # Erase various headers. CONCURRENT_TO is not valid in conversion
         # records. The others are not valid once the block is processed.
+        # Note that digests are optional and not regenerated.
         removelist = [WarcRecord.CONCURRENT_TO,
                       WarcRecord.BLOCK_DIGEST,
                       WarcRecord.PAYLOAD_DIGEST,
-                      WarcRecord.CONTENT_LENGTH]
+                      WarcRecord.CONTENT_LENGTH,
+                      WarcRecord.CONTENT_TYPE]
         d = [(k, v) for (k, v) in d if k not in removelist]
         # If we're throwing away the old record, this is only marginally
         # sensible, but the spec says "should".
         record.set_header(WarcRecord.REFERS_TO,
                           record.get_header(WarcRecord.ID))
-        # New type and payload Content-Type.
         record.set_header(WarcRecord.TYPE, WarcRecord.CONVERSION)
-        record.set_header(WarcRecord.CONTENT_TYPE, 'text/plain')
         record.set_header(WarcRecord.ID, record.random_warc_uuid())
-        # XXX Need to rebuild digests and content-length (and remove from list
-        # above)
         return d
 
 class WARCNonTikaProcessor(WARCTikaProcessor):
