@@ -35,7 +35,7 @@ import copy
 from collections import defaultdict
 # Move to Hanzo warctools library from IA's warc
 #import hanzo.warctools as warctools
-from hanzo.warctools import WarcRecord
+from hanzo.warctools import WarcRecord, parse_http_response
 # import WARCRecord, WARCParser, make_conversion
 #from .warc import WARCFile, WARCRecord
 
@@ -162,18 +162,24 @@ class WARCTikaProcessor:
         """Produce and return a WARC conversion record based on the given
            input WARC record. If conversion is not possible, return the
            input record."""
-        # Check if handleable:
-        if (not inrecord.is_http_response() # XXX warcutils fix
-                and not inrecord.type == WarcRecord.RESOURCE):
+        # We can process resource records and HTTP response records.
+        if not ((inrecord.type != WarcRecord.RESPONSE
+                    and inrecord.url.startswith('http'))
+                or inrecord.type == WarcRecord.RESOURCE):
             return inrecord
 
-        inmimetype = inrecord.get_underlying_mimetype() # XXX warcutils fix
-        inmimetype = self.make_canonical_mimetype(inmimetype) # XXX warcutils fix (parse using httplibs?)
-        if not inmimetype:
+        if inrecord.type == WarcRecord.RESOURCE:
+            inmimetype, inbody = inrecord.content
+        elif inrecord.type == WarcRecord.RESPONSE:
+            inmimetype, inbody = parse_http_response(inrecord)[-2]
+        else:
+            raise Exception("Bad record type in generate_new_record()")
+        mimetype = self.make_canonical_mimetype(inmimetype)
+        if not mimetype:
             # Content-Type should not be Tikaised
             return inrecord
         try:
-            outcontent = self.tikaise((inmimetype, inrecord.get_underlying_content())), # XXX warcutils fix
+            outcontent = self.tikaise((mimetype, inbody))
         except Exception as e:
             print e, "processing", inrecord.url
             return inrecord
