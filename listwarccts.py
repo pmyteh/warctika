@@ -37,7 +37,7 @@ def warning(*objs):
 if len(sys.argv) < 2:
     sys.exit("Must give name of file to list contents of.")
 
-print("Type, URL, Underlying Content-Type")
+print("Type, URL, Underlying Content-Type, Payload length")
 wf = warctika.WARCFile(sys.argv[1], 'rb')
 for record in wf:
     rtype = record.type
@@ -49,5 +49,6 @@ for record in wf:
         rmime = record.get_underlying_mimetype()
     except Exception:
         rmime = None
-    print(rtype, rurl, rmime, sep=", ")
+    rlen = len(record.payload)
+    print(rtype, rurl, rmime, rlen, sep=", ")
 wf.close()

@@ -47,7 +47,6 @@ from .warc import WARCFile, WARCRecord
 #     def __len__:
 #        return _private_len_variable
 
-
 class WARCTikaProcessor:
     """Processes WARCs by decomposing them, sending the records through
        Apache Tika to produce plain text, then reconstructing a WARC file
@@ -123,10 +122,11 @@ class WARCTikaProcessor:
 #                   record.header.record_id+": "+str(e.args)+", "+
 #                   str(e.message)+"\n\tWriting old record to new WARC.")
 #        finally:
-            outwarc.write_record(
-					WARCRecord(header=record.header,
+            newrecord = WARCRecord(header=record.header,
                     payload=record.payload,
-                    defaults=False))
+                    defaults=False)
+            assert len(newrecord.payload) == len(record.payload)
+            outwarc.write_record(newrecord)
         print "****Finished file. Tika status codes:", self.tikacodes.items()
         self.tikacodes = defaultdict(int)
         inwarc.close()
@@ -195,7 +195,7 @@ class WARCTikaProcessor:
             raise Exception("Bad response code from Tika ("+
                             str(resp.status_code)+") "+
                             "trying to submit Content-Type "+mimetype)
-#        print "Success from Tika submitting Content-Type:",mimetype
+        print "Success from Tika:",mimetype, "Length:", len(resp.content)
         return resp.content
 
 #    def strip_header(self, obj):
@@ -245,6 +245,20 @@ class WARCTikaProcessor:
         d['Content-Type'] = "text/plain"
         #d['WARC-Record-ID'] = "<urn:uuid:%s>" % uuid.uuid1()
         return d
+
+class WARCNonTikaProcessor(WARCTikaProcessor):
+    """A dummy class for testing WARC throughput, which does everything
+    WARCTikaProcessor does except the actual Tikaisation"""
+    def add_description_to_warcinfo(self, record):
+        pass
+    def generate_new_record(self, inrecord):
+        return inrecord
+    def tikaise(self, content, mimetype):
+        raise NotImplementedError
+    def make_canonical_mimetype(self, mimetype):
+        raise NotImplementedError
+    def generate_cv_header(self, oldheader):
+        raise NotImplementedError
 
 class WARCNotifyHandler(pyinotify.ProcessEvent):
     """Handler for pyinotify created/deleted WARC notifications."""

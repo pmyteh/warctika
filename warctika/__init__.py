@@ -9,7 +9,7 @@ Python library to work with WARC files.
 
 from .arc import ARCFile, ARCRecord, ARCHeader
 from .warc import WARCFile, WARCRecord, WARCHeader, WARCReader
-from .warctika import WARCTikaProcessor, WARCNotifyHandler
+from .warctika import WARCTikaProcessor, WARCNonTikaProcessor, WARCNotifyHandler
 
 def detect_format(filename):
     """Tries to figure out the type of the file. Return 'warc' for
