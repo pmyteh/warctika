@@ -384,7 +384,7 @@ class WARCFile:
 class WARCReader:
     RE_VERSION = re.compile("WARC/(\d+.\d+)\r\n")
     RE_HEADER = re.compile(r"([\w\-\.]+): *(.*)\r\n")
-    SUPPORTED_VERSIONS = ["1.0"]
+    SUPPORTED_VERSIONS = ["1.0","0.17"]
 
     def __init__(self, fileobj):
         self.fileobj = fileobj
