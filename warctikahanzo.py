@@ -27,17 +27,49 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 #import sys
 import os
+import traceback
 import time
 import pyinotify
 import re
 import requests
+import fcntl
 import copy
 from collections import defaultdict
 # Move to Hanzo warctools library from IA's warc
 #import hanzo.warctools as warctools
-from hanzo.warctools import WarcRecord, parse_http_response
+from hanzo.warctools import WarcRecord
+from hanzo.httptools import RequestMessage, ResponseMessage
 # import WARCRecord, WARCParser, make_conversion
 #from .warc import WARCFile, WARCRecord
+
+#####
+#UTILITY FUNCTIONS
+#####
+def parse_http_response(record):
+    """Parses the payload of an HTTP 'response' record, returning code,
+    content type and body.
+
+    Adapted from github's internetarchive/warctools hanzo/warcfilter.py,
+    commit 1850f328e31e505569126b4739cec62ffa444223. MIT licenced."""
+    message = ResponseMessage(RequestMessage())
+#    print record.content[0]
+    remainder = message.feed(record.content[1])
+    message.close()
+    if remainder or not message.complete():
+        if remainder:
+            print 'trailing data in http response for', record.url
+        if not message.complete():
+            print 'truncated http response for', record.url
+    header = message.header
+
+    mime_type = [v for k,v in header.headers if k.lower() == b'content-type']
+    if mime_type:
+        mime_type = mime_type[0].split(b';')[0]
+    else:
+        mime_type = None
+
+    return header.code, mime_type, message.get_body()
+
 
 #####
 #CLASSES
@@ -79,14 +111,16 @@ class WARCTikaProcessor:
                     None),
                 (r'^acrobat$',
                     'application/pdf')
-                ]):
+                ],
+                mintikalen=256):
         self._tikaurl = tikaurl
+        self._mintikalen = mintikalen
         self._mimemappings = mimemappings
         self._description = (
             "Items collected with content types matching the following "
             "regular expressions have been processed by Apache Tika to "
-            "produce plain text formats for storage. These processed items "
-            "have been stored as WARC conversion records: ")
+            "attempt to produce plain text formats for storage. These "
+            "processed items have been stored as WARC conversion records: ")
         for item in self._mimemappings:
             self._description += item[0]+'; '
         self._description = self._description[:-2]+'.'
@@ -94,41 +128,58 @@ class WARCTikaProcessor:
         self.tikacodes = defaultdict(int)
         print "Initialised WARCTikaProcessor"
 
-    def process(self, infn, outfn):
+    def process(self, infn, outfn, delete=False):
         """Process a WARC at a given infn, producing plain text via Tika
         where suitable, and writing a new WARC file to outfn."""
         # These are objects of type RecordStream (or a subclass), unlike with
         # the IA library
+        print "Processing existing file:", infn
         inwf = WarcRecord.open_archive(infn, mode='rb')
-        outwf = WarcRecord.open_archive(outfn, mode='wb')
+        outf = open(outfn, 'wb')
+#        try:
+#            fcntl.lockf(inwf.file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+#            fcntl.lockf(outf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+#            # Get locks on both files
+#        except IOError:
+#            print ("Unable to get file locks processing", infn, "so will "
+#                   "try later")
+#            return False
         print "Processing %s to %s." % (infn, outfn)
         for record in inwf:
-#        try:
-            if record.type == WarcRecord.WARCINFO:
-                self.add_description_to_warcinfo(record)
-            elif (record.type == WarcRecord.RESPONSE
-                    or record.type == WarcRecord.RESOURCE):
-                if record.get_header('WARC-Segment-Number'):
-                    print "Segmented response/resource record. Not processing."
-                else:
-                    record = self.generate_new_record(record)
-            # If 'metadata', 'request', 'revisit', 'continuation',
-            # 'conversion' or something exotic, we can't do anything more
-            # interesting than immediately re-writing it to the new file
+            try:
+                if record.type == WarcRecord.WARCINFO:
+                    self.add_description_to_warcinfo(record)
+                elif (record.type == WarcRecord.RESPONSE
+                      or record.type == WarcRecord.RESOURCE):
+                    if record.get_header('WARC-Segment-Number'):
+                        raise Exception("Segmented response/resource record."
+                                        "Not processing.")
+                    else:
+                        record = self.generate_new_record(record)
+                # If 'metadata', 'request', 'revisit', 'continuation',
+                # 'conversion' or something exotic, we can't do anything more
+                # interesting than immediately re-writing it to the new file
 
-#        except Exception as e:
-#            print ("Warning: WARCTikaProcessor.process() failed on "+
-#                   record.header.record_id+": "+str(e.args)+", "+
-#                   str(e.message)+"\n\tWriting old record to new WARC.")
-#        finally:
-            newrecord = WARCRecord(headers=record.header,
-                    content=record.content,
-                    defaults=False)
-            outwf.write(newrecord)
+                newrecord = WarcRecord(headers=record.headers,
+                        content=record.content)
+
+            except Exception as e:
+                print ("Warning: WARCTikaProcessor.process() failed on "+
+                       record.url+": "+str(e.message)+
+                       "\n\tWriting old record to new WARC.")
+                traceback.print_exc()
+                newrecord = record
+            finally:
+                newrecord.write_to(outf, gzip=outfn.endswith('.gz'))
         print "****Finished file. Tika status codes:", self.tikacodes.items()
         self.tikacodes = defaultdict(int)
         inwf.close()
-        outwf.close()
+        outf.close()
+        
+        if delete:
+            print "Deleting", infn
+            os.unlink(infn)
+        return True
 
     def add_description_to_warcinfo(self, record):
         """Add a description of our mangling to a warcinfo record's decription
@@ -163,15 +214,16 @@ class WARCTikaProcessor:
            input WARC record. If conversion is not possible, return the
            input record."""
         # We can process resource records and HTTP response records.
-        if not ((inrecord.type != WarcRecord.RESPONSE
+        if not ((inrecord.type == WarcRecord.RESPONSE
                     and inrecord.url.startswith('http'))
                 or inrecord.type == WarcRecord.RESOURCE):
+            print "Can't handle", inrecord.type, inrecord.url
             return inrecord
 
         if inrecord.type == WarcRecord.RESOURCE:
             inmimetype, inbody = inrecord.content
         elif inrecord.type == WarcRecord.RESPONSE:
-            inmimetype, inbody = parse_http_response(inrecord)[-2]
+            _, inmimetype, inbody = parse_http_response(inrecord)
         else:
             raise Exception("Bad record type in generate_new_record()")
         mimetype = self.make_canonical_mimetype(inmimetype)
@@ -179,7 +231,7 @@ class WARCTikaProcessor:
             # Content-Type should not be Tikaised
             return inrecord
         try:
-            outcontent = self.tikaise((mimetype, inbody))
+            outcontent = self.tikaise((mimetype, inbody), url=inrecord.url)
         except Exception as e:
             print e, "processing", inrecord.url
             return inrecord
@@ -188,24 +240,24 @@ class WARCTikaProcessor:
         # header is replaced by content[0].
         return WarcRecord(headers=outheader, content=outcontent)
 
-    def tikaise(self, content):
+    def tikaise(self, content, url=None):
         """Process a file through Apache Tika, reducing to plain text
            if possible. """
         # TODO: Consider carefully whether to send Tika the filename to help
         # guess the MIME type, which can be done by setting the (unofficial)
         # {'File-Name': string} header.
-        try:
-            resp = requests.put(self._tikaurl, data=content[1],
+        resp = requests.put(self._tikaurl, data=content[1],
                                 headers={'Content-Type': content[0]}) 
-        except requests.ConnectionError:
-            print "Unable to connect to Tika; will wait and retry."
-            time.sleep(120)
         self.tikacodes[resp.status_code] += 1
         if resp.status_code != 200:
             raise Exception("Bad response code from Tika ("+
                             str(resp.status_code)+") "+
                             "trying to submit Content-Type "+content[0])
-        print "Success from Tika:",mimetype, "Length:", len(resp.content)
+        if len(resp.content) < self._mintikalen:
+            raise Exception("Content from Tika only "+str(len(resp.content))+
+                            " bytes. Probably image-based PDF. Using original"+
+                            " record.")
+#       print "Success from Tika:",url, content[0], "Length:",len(resp.content)
         return ('text/plain', resp.content)
 
 #    def strip_header(self, obj):
@@ -237,7 +289,7 @@ class WARCTikaProcessor:
            kinds of digests as these will be automatically produced
            by the WARC record creation process with defaults=True."""
         # Build new header based upon the old header and new content
-        d = copy.copy(oldrecord.header)
+        newrecord = copy.copy(oldrecord)
 
         # Erase various headers. CONCURRENT_TO is not valid in conversion
         # records. The others are not valid once the block is processed.
@@ -247,14 +299,15 @@ class WARCTikaProcessor:
                       WarcRecord.PAYLOAD_DIGEST,
                       WarcRecord.CONTENT_LENGTH,
                       WarcRecord.CONTENT_TYPE]
-        d = [(k, v) for (k, v) in d if k not in removelist]
+        newrecord.headers = [(k, v) for (k, v) in newrecord.headers
+                             if k not in removelist]
         # If we're throwing away the old record, this is only marginally
         # sensible, but the spec says "should".
-        record.set_header(WarcRecord.REFERS_TO,
-                          record.get_header(WarcRecord.ID))
-        record.set_header(WarcRecord.TYPE, WarcRecord.CONVERSION)
-        record.set_header(WarcRecord.ID, record.random_warc_uuid())
-        return d
+        newrecord.set_header(WarcRecord.REFERS_TO,
+                             newrecord.get_header(WarcRecord.ID))
+        newrecord.set_header(WarcRecord.TYPE, WarcRecord.CONVERSION)
+        newrecord.set_header(WarcRecord.ID, newrecord.random_warc_uuid())
+        return newrecord.headers
 
 class WARCNonTikaProcessor(WARCTikaProcessor):
     """A dummy class for testing WARC throughput, which does everything

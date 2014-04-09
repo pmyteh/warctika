@@ -26,7 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 import sys
 import os
 import pyinotify
-import warctika
+from warctikahanzo import *
 import re
 import time
 
@@ -44,7 +44,7 @@ dirname = sys.argv[1]
 # heritrix finishes writing, closes and renames the file. 
 #mask = pyinotify.IN_CREATE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM
 #wm.add_watch(dirname, mask)
-warcprocessor = warctika.WARCTikaProcessor()
+warcprocessor = WARCTikaProcessor()
 oldsuffix = '.warc.gz'
 newsuffix = '-ViaTika.warc.gz'
 #handler = warctika.WARCNotifyHandler(warcprocessor=warcprocessor,
@@ -64,12 +64,10 @@ while True:
     #        if os.path.exists(outfn):
     #            print "Existing file", infn, "has already been processed. Skipping."
     #            continue
-            print "Processing existing file:", infn
     #            try:
-            warcprocessor.process(infn=infn, outfn=outfn)
+            warcprocessor.process(infn=infn, outfn=outfn, delete=True)
     #        print "Not deleting:", infn
-            os.unlink(infn)
-    #            except Exception as e:
+     #            except Exception as e:
     #               XXX cleanup: delete -ViaTika.warc.gz file if present.
     #                print ("Warning: Startup processor failed to process "+
     #                       "file "+fn+": "+str(e)+str(e.args)+
