@@ -35,12 +35,10 @@ import requests
 import fcntl
 import copy
 from collections import defaultdict
-# Move to Hanzo warctools library from IA's warc
-#import hanzo.warctools as warctools
+# These can both be installed with 'pip install warctools'. Beware that there
+# are several old versions floating around under different names in the index.
 from hanzo.warctools import WarcRecord
 from hanzo.httptools import RequestMessage, ResponseMessage
-# import WARCRecord, WARCParser, make_conversion
-#from .warc import WARCFile, WARCRecord
 
 #####
 #UTILITY FUNCTIONS
@@ -52,7 +50,6 @@ def parse_http_response(record):
     Adapted from github's internetarchive/warctools hanzo/warcfilter.py,
     commit 1850f328e31e505569126b4739cec62ffa444223. MIT licenced."""
     message = ResponseMessage(RequestMessage())
-#    print record.content[0]
     remainder = message.feed(record.content[1])
     message.close()
     if remainder or not message.complete():
