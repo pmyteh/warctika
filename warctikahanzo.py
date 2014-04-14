@@ -29,7 +29,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 import os
 import traceback
 import time
-import pyinotify
 import re
 import requests
 import fcntl
@@ -319,42 +318,3 @@ class WARCNonTikaProcessor(WARCTikaProcessor):
         raise NotImplementedError
     def generate_cv_header(self, oldrecord):
         raise NotImplementedError
-
-class WARCNotifyHandler(pyinotify.ProcessEvent):
-    """Handler for pyinotify created/deleted WARC notifications."""
-    def my_init(self, warcprocessor=None,
-                      # Note that this does not match ".open" files
-                      # so we need not worry about heritrix files
-                      # in production (as long as we pick them up
-                      # when they move to their final filename.
-                      oldsuffix='.warc.gz',
-                      newsuffix='-ViaTika.warc.gz'):
-        if not warcprocessor:
-            warcprocessor = WARCTikaProcessor()
-        self.warcprocessor = warcprocessor
-        self.oldsuffix = oldsuffix
-        self.newsuffix = newsuffix
-    def process_IN_CREATE(self, event):
-        print "IN_CREATE called for "+event.pathname
-        # If the new file is a WARC, but not a tikaed one, process it
-        # TODO: Check that this is not an 
-        if (event.pathname.endswith(self.oldsuffix) and not
-                event.pathname.endswith(self.newsuffix)):
-            try:
-                self.warcprocessor.process(
-                    infn=event.pathname,
-                    outfn=re.sub(self.oldsuffix+'$',
-                                 self.newsuffix,
-                                 event.pathname))
-            except Exception as e:
-                print ("Warning: WARCNotifyHandler failed to process new "+
-                       "file "+event.pathname+": "+str(e)+str(e.args)+
-                       "\n\tGiving up on it.")
-                raise e
-            os.remove(event.pathname)
-        print "Finished handling", event.pathname
-    def process_IN_MOVE_TO(self, event):
-        print "IN_MOVE_TO called for "+event.pathname
-        # Treat files moved as a creation.
-        self.process_IN_CREATE(event)
-
