@@ -25,7 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 import os
 import pyinotify
 import re
-from .warctikahanzo import WARCTikaProcessor
+from .warctika import WARCTikaProcessor
 
 class WARCNotifyHandler(pyinotify.ProcessEvent):
     """Handler for pyinotify created/deleted WARC notifications."""
