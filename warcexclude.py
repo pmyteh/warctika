@@ -27,58 +27,42 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 #####
 
 import sys
-import os
-from warctikahanzo import *
+from hanzo.warctools import WarcRecord
 import re
-import time
+
+exclist = []
 
 if len(sys.argv) < 2:
-    print "Must give name of WARC directory to watch"
-    sys.exit(1)
+    sys.exit ("Syntax: warcexclude pattern [pattern] [...] [pattern]\n\n"
+              "Where pattern is of the form field/regexp, with field being a "
+              "WARC header and\nregexp being a pattern to match against. If "
+              "the header's content matches the\npattern, the record is "
+              "excluded.\n\n"
+              "Example pattern: "
+              "WARC-Target-URI/^https?://www.example.com/.*$\n")
+for arg in sys.argv[1:]:
+    if '/' not in arg:
+        sys.exit("Not a valid exclusion pattern: "+str(arg))
+    exclist.append(tuple(arg.split('/', 1)))
+    sys.stderr.write("Excluding "+str(exclist[-1][0])+" matching "+str(exclist[-1][1])+'\n')
 
-dirname = sys.argv[1]
+# In theory this could be agnostic as to whether the stream is compressed or
+# not. In practice, the gzip guessing code reads the stream for marker bytes
+# and then attempts to rewind, which fails for stdin unless an elaborate
+# stream wrapping class is set up.
+inwf = WarcRecord.open_archive(file_handle=sys.stdin, mode='rb', gzip='record')
+outf = sys.stdout
 
-# Watch the WARC directory for file creation and deletion
-#log.setLevel(10)
-#wm = pyinotify.WatchManager() # Watch Manager
-# watched events
-# TODO: Consider if we also want IN_CLOSE_WRITE (depends on the order that
-# heritrix finishes writing, closes and renames the file. 
-#mask = pyinotify.IN_CREATE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM
-#wm.add_watch(dirname, mask)
-warcprocessor = WARCTikaProcessor()
-oldsuffix = '.warc.gz'
-newsuffix = '-ViaTika.warc.gz'
-#handler = warctika.WARCNotifyHandler(warcprocessor=warcprocessor,
-#                                     oldsuffix=oldsuffix,
-#                                     newsuffix=newsuffix)
-#notifier = pyinotify.Notifier(wm, handler)
-
-# On first run,
-# loop through watched directory and handle all existing
-# files, in case we restarted part-way through a crawl.
-# Then check forever.
-while True:
-    for fn in os.listdir(dirname):
-        if fn.endswith(oldsuffix) and not fn.endswith(newsuffix):
-            infn = dirname+"/"+fn
-            outfn = re.sub(oldsuffix+'$', newsuffix, infn)
-    #        if os.path.exists(outfn):
-    #            print "Existing file", infn, "has already been processed. Skipping."
-    #            continue
-    #            try:
-            warcprocessor.process(infn=infn, outfn=outfn, delete=True)
-    #        print "Not deleting:", infn
-     #            except Exception as e:
-    #               XXX cleanup: delete -ViaTika.warc.gz file if present.
-    #                print ("Warning: Startup processor failed to process "+
-    #                       "file "+fn+": "+str(e)+str(e.args)+
-    #                       "\n\tGiving up on it.")
-    #                raise e
-            print "Done."
-    time.sleep(15) 
-
-#print "Finished processing existing files. Now watching for new WARC files."
-# Run forever
-#notifier.loop()
+for record in inwf:
+    write = True
+    for tup in exclist:
+        heads = [h for h in record.headers if h[0] == tup[0]]
+        for head in heads:
+            if re.search(tup[1], head[1]):
+             write = False
+    if write:
+        # gzip could theoretically be optional, but this is normally much
+        # more useful as retrospectively creating the WARC format of multiple
+        # concatenated gzipped records is a pain with command-line tools.
+        record.write_to(outf, gzip=True)
 
