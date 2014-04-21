@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 import sys
 from hanzo.warctools import WarcRecord
+from warcresponseparse import *
 import re
 
 exclist = []
@@ -37,14 +38,22 @@ if len(sys.argv) < 2:
               "Where pattern is of the form field/regexp, with field being a "
               "WARC header and\nregexp being a pattern to match against. If "
               "the header's content matches the\npattern, the record is "
-              "excluded.\n\n"
+              "excluded. If multiple patterns are given, the record is\n"
+              "excluded if all patterns match.\n\n"
               "Example pattern: "
-              "WARC-Target-URI/^https?://www.example.com/.*$\n")
+              "WARC-Target-URI/^https?://www.example.com/.*$\n\n"
+              "In addition to the WARC headers, if the payload is an HTTP "
+              "response, three\nother fields are exposed: XHTTP-Response-Code "
+              "contains the HTTP status code\nfrom the record, "
+              "XHTTP-Content-Type contains the value of the HTTP Content-Type"
+              "\nheader, and XHTTP-Body contains the full content body.\n")
+
 for arg in sys.argv[1:]:
     if '/' not in arg:
         sys.exit("Not a valid exclusion pattern: "+str(arg))
     exclist.append(tuple(arg.split('/', 1)))
-    sys.stderr.write("Excluding "+str(exclist[-1][0])+" matching "+str(exclist[-1][1])+'\n')
+    sys.stderr.write("Excluding "+str(exclist[-1][0])+" matching "+
+                     str(exclist[-1][1])+'\n')
 
 # In theory this could be agnostic as to whether the stream is compressed or
 # not. In practice, the gzip guessing code reads the stream for marker bytes
@@ -54,13 +63,20 @@ inwf = WarcRecord.open_archive(file_handle=sys.stdin, mode='rb', gzip='record')
 outf = sys.stdout
 
 for record in inwf:
-    write = True
+    # Count down matches made
+    write = len(exclist)
     for tup in exclist:
         heads = [h for h in record.headers if h[0] == tup[0]]
+        if (record.type == WarcRecord.RESPONSE
+                and record.url.startswith('http')):
+            ccode, cmime, cbody = parse_http_response(record)
+            heads.append( ("XHTTP-Response-Code", ccode) )
+            heads.append( ("XHTTP-Content-Type", cmime) )
+            heads.append( ("XHTTP-Body", cbody) )
         for head in heads:
             if re.search(tup[1], head[1]):
-             write = False
-    if write:
+                write -= 1
+    if write > 0:
         # gzip could theoretically be optional, but this is normally much
         # more useful as retrospectively creating the WARC format of multiple
         # concatenated gzipped records is a pain with command-line tools.
