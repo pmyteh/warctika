@@ -129,7 +129,6 @@ class WARCTikaProcessor:
         where suitable, and writing a new WARC file to outfn."""
         # These are objects of type RecordStream (or a subclass), unlike with
         # the IA library
-        print "Processing existing file:", infn
         inwf = WarcRecord.open_archive(infn, mode='rb')
         outf = open(outfn, 'wb')
 #        try:
@@ -140,7 +139,7 @@ class WARCTikaProcessor:
 #            print ("Unable to get file locks processing", infn, "so will "
 #                   "try later")
 #            return False
-        print "Processing %s to %s." % (infn, outfn)
+        print "Processing", infn
         for record in inwf:
             try:
                 if record.type == WarcRecord.WARCINFO:
@@ -172,7 +171,13 @@ class WARCTikaProcessor:
         inwf.close()
         outf.close()
         
-        if delete:
+        # Check that the file has written correctly - for an excess of caution
+        validrc = os.system("warcvalid "+outfn)
+
+        if validrc:
+            print "New file", outfn, "appears not to be valid." 
+
+        if delete and not validrc:
             print "Deleting", infn
             os.unlink(infn)
         return True
