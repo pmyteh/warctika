@@ -25,8 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 import sys
 import os
-#import pyinotify
-from warctikahanzo import *
+from warctika import *
 import re
 import time
 
@@ -36,47 +35,19 @@ if len(sys.argv) < 2:
 
 dirname = sys.argv[1]
 
-# Watch the WARC directory for file creation and deletion
-#log.setLevel(10)
-#wm = pyinotify.WatchManager() # Watch Manager
-# watched events
-# TODO: Consider if we also want IN_CLOSE_WRITE (depends on the order that
-# heritrix finishes writing, closes and renames the file. 
-#mask = pyinotify.IN_CREATE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM
-#wm.add_watch(dirname, mask)
 warcprocessor = WARCTikaProcessor()
 oldsuffix = '.warc.gz'
 newsuffix = '-ViaTika.warc.gz'
-#handler = warctika.WARCNotifyHandler(warcprocessor=warcprocessor,
-#                                     oldsuffix=oldsuffix,
-#                                     newsuffix=newsuffix)
-#notifier = pyinotify.Notifier(wm, handler)
 
-# On first run,
-# loop through watched directory and handle all existing
-# files, in case we restarted part-way through a crawl.
-# Then check forever.
 while True:
     for fn in os.listdir(dirname):
         if fn.endswith(oldsuffix) and not fn.endswith(newsuffix):
             infn = dirname+"/"+fn
             outfn = re.sub(oldsuffix+'$', newsuffix, infn)
-    #        if os.path.exists(outfn):
-    #            print "Existing file", infn, "has already been processed. Skipping."
-    #            continue
-    #            try:
+            if os.path.exists(outfn):
+                print "File", infn, "has already been processed. Skipping."
+                continue
             warcprocessor.process(infn=infn, outfn=outfn, delete=True)
-    #        print "Not deleting:", infn
-     #            except Exception as e:
-    #               XXX cleanup: delete -ViaTika.warc.gz file if present.
-    #                print ("Warning: Startup processor failed to process "+
-    #                       "file "+fn+": "+str(e)+str(e.args)+
-    #                       "\n\tGiving up on it.")
-    #                raise e
             print "Done."
     time.sleep(15) 
-
-#print "Finished processing existing files. Now watching for new WARC files."
-# Run forever
-#notifier.loop()
 
