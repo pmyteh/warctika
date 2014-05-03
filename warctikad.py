@@ -46,8 +46,8 @@ while True:
             outfn = re.sub(oldsuffix+'$', newsuffix, infn)
             if os.path.exists(outfn):
                 print "File", infn, "has already been processed. Skipping."
-                continue
-            warcprocessor.process(infn=infn, outfn=outfn, delete=True)
-            print "Done."
-    time.sleep(15) 
+            else:
+                warcprocessor.process(infn=infn, outfn=outfn, delete=True)
+                print "Done."
+    time.sleep(15)
 
