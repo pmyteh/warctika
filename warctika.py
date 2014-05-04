@@ -280,7 +280,7 @@ class WARCTikaProcessor:
         """Return a canonical mimetype if mimetype matches our list to process,
            else False.
            None is always processable, but Tika will need to guess the type."""
-        print "check_mimetype: received", mimetype
+#        print "check_mimetype: received", mimetype
             # Note: we can make Tika guess the Content-Type without assistance
             # by setting it to the root type 'application/octet-stream'.
             # return 'application/octet-stream'
