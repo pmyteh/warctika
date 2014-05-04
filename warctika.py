@@ -71,6 +71,12 @@ def parse_http_response(record):
 #CLASSES
 #####
 
+class WarcTikaException(Exception):
+    pass
+
+class WarcTikaNoResultException(WarcTikaException):
+    pass
+
 class WARCTikaProcessor:
     """Processes WARCs by decomposing them, sending the records through
        Apache Tika to produce plain text, then reconstructing a WARC file
@@ -147,8 +153,8 @@ class WARCTikaProcessor:
                 elif (record.type == WarcRecord.RESPONSE
                       or record.type == WarcRecord.RESOURCE):
                     if record.get_header('WARC-Segment-Number'):
-                        raise Exception("Segmented response/resource record."
-                                        "Not processing.")
+                        raise WarcTikaException("Segmented response/resource "
+                                                "record. Not processing.")
                     else:
                         record = self.generate_new_record(record)
                 # If 'metadata', 'request', 'revisit', 'continuation',
@@ -186,8 +192,8 @@ class WARCTikaProcessor:
         """Add a description of our mangling to a warcinfo record's decription
         tag, creating it if necessary"""
         if record.type != WarcRecord.WARCINFO:
-            raise Exception("Non-warcinfo record passed to "
-                            "add_description_to_warcinfo")
+            raise WarcTikaException("Non-warcinfo record passed to "
+                                    "add_description_to_warcinfo")
 
         match = re.search(r'^(description: .*)$',
                           record.content[1], re.I | re.M)
@@ -223,16 +229,19 @@ class WARCTikaProcessor:
 
         if inrecord.type == WarcRecord.RESOURCE:
             inmimetype, inbody = inrecord.content
-        elif inrecord.type == WarcRecord.RESPONSE:
+        else: # inrecord.type == WarcRecord.RESPONSE (HTTP):
             _, inmimetype, inbody = parse_http_response(inrecord)
-        else:
-            raise Exception("Bad record type in generate_new_record()")
-        mimetype = self.make_canonical_mimetype(inmimetype)
+
+        mimetype = self.check_mimetype(inmimetype)
         if not mimetype:
             # Content-Type should not be Tikaised
             return inrecord
         try:
             outcontent = self.tikaise((mimetype, inbody), url=inrecord.url)
+        except WarcTikaNoResultException:
+            # Tika hasn't done the business (image PDF, unparseable source,
+            # whatever. Don't report, as these are very common.
+            return inrecord
         except Exception as e:
             print e, "processing", inrecord.url
             return inrecord
@@ -251,11 +260,12 @@ class WARCTikaProcessor:
                                 headers={'Content-Type': content[0]}) 
         self.tikacodes[resp.status_code] += 1
         if resp.status_code != 200:
-            raise Exception("Bad response code from Tika ("+
+            raise WarcTikaNoResultException("Bad response code from Tika ("+
                             str(resp.status_code)+") "+
                             "trying to submit Content-Type "+content[0])
         if len(resp.content) < self._mintikalen:
-            raise Exception("Content from Tika only "+str(len(resp.content))+
+            raise WarcTikaNoResultException("Content from Tika only "+
+                            str(len(resp.content))+
                             " bytes. Probably image-based PDF. Using original"+
                             " record.")
 #       print "Success from Tika:",url, content[0], "Length:",len(resp.content)
@@ -266,22 +276,20 @@ class WARCTikaProcessor:
 #        rest of the object."""
 #        return re.split(u'\n\n', obj, maxsplit=1)[1]
 
-    def make_canonical_mimetype(self, mimetype):
+    def check_mimetype(self, mimetype):
         """Return a canonical mimetype if mimetype matches our list to process,
            else False.
            None is always processable, but Tika will need to guess the type."""
-#        print "make_canonical_mimetype: received", mimetype
-        if mimetype is None:
+        print "check_mimetype: received", mimetype
             # Note: we can make Tika guess the Content-Type without assistance
             # by setting it to the root type 'application/octet-stream'.
             # return 'application/octet-stream'
-            # Leave it as it is.
-            return False
-        for tup in self._mimemappings:
-            if re.search(tup[0], mimetype, re.IGNORECASE):
-                if tup[1] is None:
-                    return mimetype
-                return tup[1]
+        if mimetype is not None:
+            for tup in self._mimemappings:
+                if re.search(tup[0], mimetype, re.IGNORECASE):
+                    if tup[1] is None:
+                        return mimetype
+                    return tup[1]
         return False
 
     def generate_cv_header(self, oldrecord):
@@ -319,7 +327,7 @@ class WARCNonTikaProcessor(WARCTikaProcessor):
         return inrecord
     def tikaise(self, content, mimetype):
         raise NotImplementedError
-    def make_canonical_mimetype(self, mimetype):
+    def check_mimetype(self, mimetype):
         raise NotImplementedError
     def generate_cv_header(self, oldrecord):
         raise NotImplementedError
