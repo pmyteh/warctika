@@ -53,17 +53,15 @@ parser.add_argument('-o', '--out-filename', metavar='outwf',
 
 gzinput = parser.add_mutually_exclusive_group()
 gzinput.add_argument('-gz', '--gzipped-input', action="store_true",
-                    help='Treat input stream as gzipped. ')
-gzinput.add_argument('-gg', '--guess-input', action="store_true",
-                    help='Guess if input is gzipped, which fails on stdin. '
-                         '(Default)')
+                    help='Treat input stream as gzipped. Default: guess, '
+                         'which fails on stdin.')
 gzinput.add_argument('-gp', '--plain-input', action="store_true",
                     help='Treat input stream as plain text.')
 
 parser.add_argument('-G', '--gzipped-output', action="store_true", 
                    help='Gzip the output stream (record-wise).')
 
-parser.add_argument('-p', '--pattern', metavar='patt', nargs='+',
+parser.add_argument('pattern', metavar='patt', nargs='+',
                    help="field/regexp, where field is a "
               "WARC header and regexp is a pattern to match against. "
               "Example pattern: WARC-Target-URI/^https?://www.example.com/.*$")
@@ -71,49 +69,36 @@ parser.add_argument('-p', '--pattern', metavar='patt', nargs='+',
 
 args = parser.parse_args()
 
-if not args.gzipped_input and not args.plain_input: 
-    args.guess_input = True
-
-print args
-
-exit(0)
-
 exclist = []
 uuidsexcluded = set()
 
-if len(sys.argv) < 2:
-    sys.exit ("Syntax: warcexclude pattern [pattern] [...] [pattern]\n\n"
-              "Where pattern is of the form field/regexp, with field being a "
-              "WARC header and\nregexp being a pattern to match against. If "
-              "the header's content matches the\npattern, the record is "
-              "excluded. If multiple patterns are given, the record is\n"
-              "excluded if all patterns match. If you exclude a response "
-              "record, corresponding\nrequest and metadata records will also "
-              "be excluded.\n\n"
-              "Example pattern: "
-              "WARC-Target-URI/^https?://www.example.com/.*$\n\n"
-              "In addition to the WARC headers, if the payload is an HTTP "
-              "response, three\nother fields are exposed: XHTTP-Response-Code "
-              "contains the HTTP status code\nfrom the record, "
-              "XHTTP-Content-Type contains the value of the HTTP Content-Type"
-              "\nheader, and XHTTP-Body contains the full content body.\n")
-
-for arg in sys.argv[1:]:
+for arg in args.pattern:
     if '/' not in arg:
         sys.exit("Not a valid exclusion pattern: "+str(arg))
-    exclist.append(tuple(arg.split('/', 1)))
-    sys.stderr.write("Excluding "+str(exclist[-1][0])+" matching "+
-                     str(exclist[-1][1])+'\n')
+    items = arg.split('/', 1)
+    items[1] = re.compile(items[1])
+    exclist.append(tuple(items))
 
 # In theory this could be agnostic as to whether the stream is compressed or
 # not. In practice, the gzip guessing code reads the stream for marker bytes
 # and then attempts to rewind, which fails for stdin unless an elaborate
 # stream wrapping class is set up.
-inwf = WarcRecord.open_archive(file_handle=sys.stdin, mode='rb', gzip='record')
+gzi = 'auto'
+if args.gzipped_input:
+    gzi = 'record'
+elif args.plain_input:
+    gzi = False
+
+if args.in_filename is None:
+    inwf = WarcRecord.open_archive(file_handle=sys.stdin,
+                                   mode='rb', gzip=gzi)
+else:
+    inwf = WarcRecord.open_archive(filename=args.in_filename,
+                                   mode='rb', gzip=gzi)
+
+outf = sys.stdout
 if args.out_filename is not None:
     outf = open(args.out_filename, 'wb')
-else:
-    outf = sys.stdout
 
 for record in inwf:
     # Count down matches made
@@ -124,13 +109,14 @@ for record in inwf:
     if uuidsexcluded.intersection(concurrentheads):
         # Skip records which are derivative of those excluded
 #        sys.stderr.write("Skipping derivative record: "+str(record.id)+"\n")
+        sys.stderr.write('.')
         continue
     
     for tup in exclist:
         heads = [h for h in record.headers if h[0] == tup[0]]
         if (record.type == WarcRecord.RESPONSE
                 and record.url.startswith('http')
-                and not do_not_expose_http_headers):
+                and not args.do_not_expose_http_headers):
             ccode, cmime, cbody = parse_http_response(record)
             heads.append( ("XHTTP-Response-Code", ccode) )
             heads.append( ("XHTTP-Content-Type", cmime) )
@@ -138,14 +124,14 @@ for record in inwf:
 #            sys.stderr.write(str(ccode)+", "+str(cmime)+"\n")
         for head in heads:
 #            sys.stderr.write(str(tup[1])+", "+str(head[1]))
-            if re.search(str(tup[1]), str(head[1])):
+#            if re.search(str(tup[1]), str(head[1])):
+            if tup[1].match(str(head[1])):
                 write -= 1
     if write > 0:
-        # gzip could theoretically be optional, but this is normally much
-        # more useful as retrospectively creating the WARC format of multiple
-        # concatenated gzipped records is a pain with command-line tools.
-        record.write_to(outf, gzip=True)
+        record.write_to(outf, gzip=args.gzipped_output)
+        sys.stderr.write('#')
     else:
         # Don't write. Additionally, exclude all derivative records.
+        sys.stderr.write('-')
         uuidsexcluded.add(record.id)
-
+sys.stderr.write("Done.\n")
