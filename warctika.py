@@ -129,7 +129,7 @@ class WARCTikaProcessor:
         self._description = self._description[:-2]+'.'
         # Count of return codes
         self.tikacodes = defaultdict(int)
-        self._openfiles = []
+        self._openfiles = set()
         atexit.register(self._remove_open_files)
         print "Initialised WARCTikaProcessor"
 
