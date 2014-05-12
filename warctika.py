@@ -128,8 +128,8 @@ class WARCTikaProcessor:
         self._description = self._description[:-2]+'.'
         # Count of return codes
         self.tikacodes = defaultdict(int)
-        self._openfile = None
-        atexit.register(self._remove_open_file)
+        self._openfiles = []
+        atexit.register(self._remove_open_files)
         print "Initialised WARCTikaProcessor"
 
     def process(self, infn, outfn, delete=False):
@@ -139,7 +139,7 @@ class WARCTikaProcessor:
         # the IA library
         inwf = WarcRecord.open_archive(infn, mode='rb')
         outf = open(outfn, 'wb')
-        self._openfile = outfn
+        self._openfiles.add(outfn)
 #        try:
 #            fcntl.lockf(inwf.file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
 #            fcntl.lockf(outf, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -179,7 +179,7 @@ class WARCTikaProcessor:
         self.tikacodes = defaultdict(int)
         inwf.close()
         outf.close()
-        self._openfile = None
+        self._openfiles.remove(outfn)
 
         # Check that the file has written correctly - for an excess of caution
         validrc = os.system("warcvalid "+outfn)
@@ -322,11 +322,13 @@ class WARCTikaProcessor:
         newrecord.set_header(WarcRecord.ID, newrecord.random_warc_uuid())
         return newrecord.headers
 
-    def _remove_open_file(self):
-        """Clean up an open file, if it exists"""
-        if self._openfile:
-            os.unlink(self._openfile)
-            self._openfile = None
+    def _remove_open_files(self):
+        """Clean up open files, if they exist"""
+        try:
+            os.unlink(self._openfiles.pop())
+            self._remove_open_file()
+        except KeyError:
+            return
 
 class WARCNonTikaProcessor(WARCTikaProcessor):
     """A dummy class for testing WARC throughput, which does everything
