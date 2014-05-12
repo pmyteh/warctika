@@ -326,7 +326,7 @@ class WARCTikaProcessor:
         """Clean up open files, if they exist"""
         try:
             os.unlink(self._openfiles.pop())
-            self._remove_open_file()
+            self._remove_open_files()
         except KeyError:
             return
 
