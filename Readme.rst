@@ -1,6 +1,13 @@
-warctika: Python library for reading and writing warc files, and processing
-their contents through Apache Tika
-============================================================================
+warctika: Python library for processing WARC files through Apache Tika
+======================================================================
+
+This library is designed to handle web crawl data fetched using the
+Heritrix web crawler (or other tools producing WARC files), extract
+the plain text from structured formats and resave the data as WARC
+"conversion" records.
+
+The primary use for this tool is to extract text from webcrawl data
+sets for use in machine learning and supervised classification work.
 
 This library was originally based upon the "warc" library by the Internet
 Archive and others, but now relies upon the hanzo warctools. These can be
@@ -15,5 +22,7 @@ License
 -------
 
 This software is licensed under GPL v2 or later. See LICENSE_ file for details.
+The contents of the warcresponseparse.py file are derived directly from
+Hanzo warctools code and can be used under the terms of the MIT license.
 
 .. LICENSE: http://github.com/pmyteh/warctika/blob/master/LICENSE
