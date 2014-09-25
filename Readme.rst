@@ -26,3 +26,10 @@ The contents of the warcresponseparse.py file are derived directly from
 Hanzo warctools code and can be used under the terms of the MIT license.
 
 .. LICENSE: http://github.com/pmyteh/warctika/blob/master/LICENSE
+
+DOI
+---
+
+The formally-released versions of this library have been assigned DOIs for citation purposes.
+
+.. image:: https://zenodo.org/badge/6315/pmyteh/warctika.png   :target: http://dx.doi.org/10.5281/zenodo.11867
