@@ -31,11 +31,12 @@ from hanzo.warctools import WarcRecord
 from warcresponseparse import *
 import re
 import argparse
+import time
 
 parser = argparse.ArgumentParser(description='Recreate a WARC record, '
            'optionally excluding records which match an arbitrary number of '
-           'given header/regex pairs. If multiple patterns are given, exclude '
-           'only if all patterns match.')
+           'given header/regex pairs. If multiple patterns are given, '
+           'by default exclude only if all patterns match.')
 parser.add_argument("-e", "--do-not-expose-http-headers",
                     help="Don't expose additional headers if the record "
                          "payload is an HTTP response. Normally, "
@@ -59,25 +60,72 @@ gzinput.add_argument('-gp', '--plain-input', action="store_true",
                     help='Treat input stream as plain text.')
 
 parser.add_argument('-G', '--gzipped-output', action="store_true", 
-                   help='Gzip the output stream (record-wise).')
+                    help='Gzip the output stream (record-wise).')
+
+parser.add_argument('-a', '--match-any', action="store_true",
+                    help='Exclude if any one pattern is matched. '
+                         'Default: all')
 
 parser.add_argument('pattern', metavar='patt', nargs='+',
-                   help="field/regexp, where field is a "
+               help="field/regexp, where field is a "
               "WARC header and regexp is a pattern to match against. "
-              "Example pattern: WARC-Target-URI/^https?://www.example.com/.*$")
+              "Example pattern: WARC-Target-URI/^https?://www.example.com/.*$"
+              "If the field is of the format XFile/filepath, then the given "
+              "file will be loaded and each line interpreted as a pattern.")
+
 
 
 args = parser.parse_args()
 
-exclist = []
 uuidsexcluded = set()
 
-for arg in args.pattern:
-    if '/' not in arg:
-        sys.exit("Not a valid exclusion pattern: "+str(arg))
-    items = arg.split('/', 1)
-    items[1] = re.compile(items[1])
-    exclist.append(tuple(items))
+def parse_exc_args(argl, exclist=list()):
+    print argl
+    for arg in argl:
+        if '/' not in arg:
+            sys.exit("Invalid exclusion pattern: "+str(arg))
+        if arg.startswith('XFile/'):
+            exclist = parse_exc_args([line.rstrip('\n')
+                                        for line in open(arg[6:])],
+                                     exclist)
+            continue
+        items = arg.split('/', 1)
+        items[1] = re.compile(items[1])
+        exclist.append(tuple(items))
+    return exclist
+
+def check_headers(exclist, record, just_one=False):
+    matches = 0
+    for tup in exclist:
+        heads = [h for h in record.headers if h[0] == tup[0]]
+        if (record.type == WarcRecord.RESPONSE
+                and record.url.startswith('http')
+                and not args.do_not_expose_http_headers):
+            if tup[0] == "XHTTP-Response-Code":
+                ccode, _, _ = parse_http_response(record)
+                heads.append( ("XHTTP-Response-Code", ccode) )
+            elif tup[0] == "XHTTP-Content-Type":
+                _, cmime, _ = parse_http_response(record)
+                heads.append( ("XHTTP-Content-Type", cmime) )
+            elif tup[0] == "XHTTP-Body":
+                _, _, cbody = parse_http_response(record)
+                heads.append( ("XHTTP-Body", cbody) )
+#            sys.stderr.write(str(ccode)+", "+str(cmime)+"\n")
+        for head in heads:
+#            sys.stderr.write(str(tup[1])+", "+str(head[1]))
+#            if re.search(str(tup[1]), str(head[1])):
+
+#            t = time.clock()
+            match = tup[1].match(str(head[1]))
+#            print tup[1], head[1], time.clock()-t
+            if match:
+                matches += 1
+                # Avoid re-matching if one match hits and that's sufficient
+                if just_one:
+                    return matches
+    return matches
+
+exclist = parse_exc_args(args.pattern)
 
 # In theory this could be agnostic as to whether the stream is compressed or
 # not. In practice, the gzip guessing code reads the stream for marker bytes
@@ -101,8 +149,13 @@ if args.out_filename is not None:
     outf = open(args.out_filename, 'wb')
 
 for record in inwf:
-    # Count down matches made
+    # How many matches constitutes failure?
     write = len(exclist)
+    if args.match_any:
+        match_target = 0
+    else:
+        match_target = len(exclist) - 1
+
     # Extract "WARC-Concurrent-To" headers
     concurrentheads = {h[1] for h in record.headers
                        if h[0] == WarcRecord.CONCURRENT_TO}
@@ -111,23 +164,10 @@ for record in inwf:
 #        sys.stderr.write("Skipping derivative record: "+str(record.id)+"\n")
         sys.stderr.write('.')
         continue
-    
-    for tup in exclist:
-        heads = [h for h in record.headers if h[0] == tup[0]]
-        if (record.type == WarcRecord.RESPONSE
-                and record.url.startswith('http')
-                and not args.do_not_expose_http_headers):
-            ccode, cmime, cbody = parse_http_response(record)
-            heads.append( ("XHTTP-Response-Code", ccode) )
-            heads.append( ("XHTTP-Content-Type", cmime) )
-            heads.append( ("XHTTP-Body", cbody) )
-#            sys.stderr.write(str(ccode)+", "+str(cmime)+"\n")
-        for head in heads:
-#            sys.stderr.write(str(tup[1])+", "+str(head[1]))
-#            if re.search(str(tup[1]), str(head[1])):
-            if tup[1].match(str(head[1])):
-                write -= 1
-    if write > 0:
+   
+    matches = check_headers(exclist, record, args.match_any)
+
+    if matches <= match_target:
         record.write_to(outf, gzip=args.gzipped_output)
         sys.stderr.write('#')
     else:
