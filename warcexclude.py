@@ -33,6 +33,70 @@ import re
 import argparse
 import time
 
+def parse_exc_args(argl, exclist=list()):
+    """Given a list of patterns and an optional list of 2-tuples. If given
+       a pattern of the form "XFile/filename", fetches the file and recurses
+       throught it, treating each line in the file as a pattern.
+
+       Returns: a list containing ("Header",<compiled regex>) for each item"""
+    print argl
+    for arg in argl:
+        if '/' not in arg:
+            sys.exit("Invalid exclusion pattern: "+str(arg))
+        if arg.startswith('XFile/'):
+            exclist = parse_exc_args([line.rstrip('\n')
+                                        for line in open(arg[6:])],
+                                     exclist)
+            continue
+        items = arg.split('/', 1)
+        items[1] = re.compile(items[1])
+        exclist.append(tuple(items))
+    return exclist
+
+def check_headers(exclist, record, just_one=False):
+    """Tests the given record against the list of exclusion patterns given in
+       exclist. If just_one is True, testing is optimised by returning after
+       any match has been made.
+
+       Returns: The number of matches that have been made"""
+    matches = 0
+    for tup in exclist:
+        heads = [h for h in record.headers if h[0] == tup[0]]
+        # Try to avoid processing the HTTP Response content unless we have
+        # a pattern which requires it, as it's expensive.
+        # This could be further optimised by caching the body etc. if
+        # calculated once.
+        if (record.type == WarcRecord.RESPONSE
+                and record.url.startswith('http')
+                and not args.do_not_expose_http_headers):
+            if tup[0] == "XHTTP-Response-Code":
+                ccode, _, _ = parse_http_response(record)
+                heads.append( ("XHTTP-Response-Code", ccode) )
+            elif tup[0] == "XHTTP-Content-Type":
+                _, cmime, _ = parse_http_response(record)
+                heads.append( ("XHTTP-Content-Type", cmime) )
+            elif tup[0] == "XHTTP-Body":
+                _, _, cbody = parse_http_response(record)
+                heads.append( ("XHTTP-Body", cbody) )
+#            sys.stderr.write(str(ccode)+", "+str(cmime)+"\n")
+        for head in heads:
+#            sys.stderr.write(str(tup[1])+", "+str(head[1]))
+#            if re.search(str(tup[1]), str(head[1])):
+
+#            t = time.clock()
+            match = tup[1].match(str(head[1]))
+#            print tup[1], head[1], time.clock()-t
+            if match:
+                matches += 1
+                # Avoid re-matching if one match hits and that's sufficient
+                if just_one:
+                    return matches
+    return matches
+
+#####
+#ARGUMENT PARSER
+#####
+
 parser = argparse.ArgumentParser(description='Recreate a WARC record, '
            'optionally excluding records which match an arbitrary number of '
            'given header/regex pairs. If multiple patterns are given, '
@@ -79,52 +143,6 @@ args = parser.parse_args()
 
 uuidsexcluded = set()
 
-def parse_exc_args(argl, exclist=list()):
-    print argl
-    for arg in argl:
-        if '/' not in arg:
-            sys.exit("Invalid exclusion pattern: "+str(arg))
-        if arg.startswith('XFile/'):
-            exclist = parse_exc_args([line.rstrip('\n')
-                                        for line in open(arg[6:])],
-                                     exclist)
-            continue
-        items = arg.split('/', 1)
-        items[1] = re.compile(items[1])
-        exclist.append(tuple(items))
-    return exclist
-
-def check_headers(exclist, record, just_one=False):
-    matches = 0
-    for tup in exclist:
-        heads = [h for h in record.headers if h[0] == tup[0]]
-        if (record.type == WarcRecord.RESPONSE
-                and record.url.startswith('http')
-                and not args.do_not_expose_http_headers):
-            if tup[0] == "XHTTP-Response-Code":
-                ccode, _, _ = parse_http_response(record)
-                heads.append( ("XHTTP-Response-Code", ccode) )
-            elif tup[0] == "XHTTP-Content-Type":
-                _, cmime, _ = parse_http_response(record)
-                heads.append( ("XHTTP-Content-Type", cmime) )
-            elif tup[0] == "XHTTP-Body":
-                _, _, cbody = parse_http_response(record)
-                heads.append( ("XHTTP-Body", cbody) )
-#            sys.stderr.write(str(ccode)+", "+str(cmime)+"\n")
-        for head in heads:
-#            sys.stderr.write(str(tup[1])+", "+str(head[1]))
-#            if re.search(str(tup[1]), str(head[1])):
-
-#            t = time.clock()
-            match = tup[1].match(str(head[1]))
-#            print tup[1], head[1], time.clock()-t
-            if match:
-                matches += 1
-                # Avoid re-matching if one match hits and that's sufficient
-                if just_one:
-                    return matches
-    return matches
-
 exclist = parse_exc_args(args.pattern)
 
 # In theory this could be agnostic as to whether the stream is compressed or
@@ -143,6 +161,10 @@ if args.in_filename is None:
 else:
     inwf = WarcRecord.open_archive(filename=args.in_filename,
                                    mode='rb', gzip=gzi)
+
+#####
+#MAIN
+#####
 
 outf = sys.stdout
 if args.out_filename is not None:
@@ -175,3 +197,4 @@ for record in inwf:
         sys.stderr.write('-')
         uuidsexcluded.add(record.id)
 sys.stderr.write("Done.\n")
+
