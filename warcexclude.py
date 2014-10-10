@@ -44,10 +44,12 @@ def parse_exc_args(argl, exclist=list()):
         if '/' not in arg:
             sys.exit("Invalid exclusion pattern: "+str(arg))
         if arg.startswith('XFile/'):
+            # Read file and recurse to parse it
             exclist = parse_exc_args([line.rstrip('\n')
                                         for line in open(arg[6:])],
                                      exclist)
             continue
+        # Extract two parts of pattern, compile regex and write to exclist
         items = arg.split('/', 1)
         items[1] = re.compile(items[1])
         exclist.append(tuple(items))
@@ -78,14 +80,9 @@ def check_headers(exclist, record, just_one=False):
             elif tup[0] == "XHTTP-Body":
                 _, _, cbody = parse_http_response(record)
                 heads.append( ("XHTTP-Body", cbody) )
-#            sys.stderr.write(str(ccode)+", "+str(cmime)+"\n")
         for head in heads:
-#            sys.stderr.write(str(tup[1])+", "+str(head[1]))
-#            if re.search(str(tup[1]), str(head[1])):
-
-#            t = time.clock()
+            # Do the actual match
             match = tup[1].match(str(head[1]))
-#            print tup[1], head[1], time.clock()-t
             if match:
                 matches += 1
                 # Avoid re-matching if one match hits and that's sufficient
@@ -183,7 +180,6 @@ for record in inwf:
                        if h[0] == WarcRecord.CONCURRENT_TO}
     if uuidsexcluded.intersection(concurrentheads):
         # Skip records which are derivative of those excluded
-#        sys.stderr.write("Skipping derivative record: "+str(record.id)+"\n")
         sys.stderr.write('.')
         continue
    
