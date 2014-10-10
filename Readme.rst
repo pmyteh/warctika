@@ -9,14 +9,16 @@ the plain text from structured formats and resave the data as WARC
 The primary use for this tool is to extract text from webcrawl data
 sets for use in machine learning and supervised classification work.
 
-This library was originally based upon the "warc" library by the Internet
-Archive and others, but now relies upon the hanzo warctools. These can be
-installed with 'pip install warctools'. Beware that there are several old
-versions floating around under different names in the index.
-
-WARC (Web ARChive) is a file format for storing web crawls.
-
+WARC (Web ARChive) is a file format for storing web crawls:
 http://bibnum.bnf.fr/WARC/ 
+
+This library was originally based upon the "warc" library by the Internet
+Archive and others, but now relies upon the hanzo warctools and has no
+code in common with the original library.
+
+The hanzo library which this code is dependent upon can be installed
+with 'pip install warctools'. Beware that there are several old
+versions floating around under different names in the index.
 	
 License
 -------
