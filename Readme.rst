@@ -34,5 +34,5 @@ DOI
 
 The formally-released versions of this library have been assigned DOIs for citation purposes.
 
-.. image:: https://zenodo.org/badge/6315/pmyteh/warctika.png
-   :target: http://dx.doi.org/10.5281/zenodo.11867
+.. image:: https://zenodo.org/badge/doi/10.5281/zenodo.12183.png
+   :target: http://dx.doi.org/10.5281/zenodo.12183
