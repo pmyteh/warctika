@@ -1,16 +1,16 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 """Watch a directory for new WARC files, then process them by extracting
 non-text content with Apache Tika and re-writing a WARC file with
 transformation records in place of the original.
 
 Requirements: TikaJAXRS running on a given port and auto-reloaded.
 
-Copyright 2014 Tom Nicholls
+Copyright 2014-2015 Tom Nicholls
 
-This work is available under the terms of the GNU General Purpose Licence
-This program is free software: you can redistribute it and/or modify
-it under the terms of version 2 of the GNU General Public License as published
-by the Free Software Foundation.
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -78,7 +78,7 @@ class WarcTikaException(Exception):
 class WarcTikaNoResultException(WarcTikaException):
     pass
 
-class WARCTikaProcessor:
+class WARCTikaProcessor(object):
     """Processes WARCs by decomposing them, sending the records through
        Apache Tika to produce plain text, then reconstructing a WARC file
        with appropriate Transformation records.
@@ -257,7 +257,9 @@ class WARCTikaProcessor:
 
     def tikaise(self, content, url=None):
         """Process a file through Apache Tika, reducing to plain text
-           if possible. """
+           if possible.
+
+           :content: a (mimetype, body) tuple"""
         # TODO: Consider carefully whether to send Tika the filename to help
         # guess the MIME type, which can be done by setting the (unofficial)
         # {'File-Name': string} header.

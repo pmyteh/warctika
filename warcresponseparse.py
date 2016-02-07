@@ -7,7 +7,7 @@ from hanzo.httptools import RequestMessage, ResponseMessage
 #####
 #UTILITY FUNCTIONS
 #####
-def parse_http_response(record):
+def parse_http_response_charset(record):
     """Parses the payload of an HTTP 'response' record, returning code,
     content type and body.
 
@@ -18,14 +18,14 @@ def parse_http_response(record):
     message.close()
     if remainder or not message.complete():
         if remainder:
-            print 'trailing data in http response for', record.url
+            raise Exception('trailing data in http response for'+str(record.url))
         if not message.complete():
-            print 'truncated http response for', record.url
+            print Exception('truncated http response for'+str(record.url))
     header = message.header
 
     mime_type = [v for k,v in header.headers if k.lower() == b'content-type']
     if mime_type:
-        mime_type = mime_type[0].split(b';')[0]
+        mime_type, charset = mime_type[0].split(b';')
     else:
         mime_type = None
 
