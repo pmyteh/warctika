@@ -3,63 +3,36 @@ import csv
 import sys
 import os
 from multiprocessing import Pool
-
-def process(fn):
-    from warc2mongodb import *
-    cf = ContentFilterUrlSet(s)
-    processorbs = WARCMongoDBProcessorBS(contentfilter=cf)
-    processorrb = WARCMongoDBProcessorReadability(contentfilter=cf)
-    processorbs.process(fn)
-    processorrb.process(fn)
+from warc2mongodb import *
+from functools import partial
+from itertools import imap
+import pprint
+import pymongo
 
 sys.stderr.write("Preparing content filter set...")
 s = set()
 with open('output/nodemap-sorted-filtered.tsv', 'rb') as f:
     for line in csv.reader(f, dialect='excel-tab'):
-        s.update({unicode(line[0])})
+        s.update({md5_hash(unicode(line[0].rstrip()))})
 sys.stderr.write(" done.\n")
 
-fns = [x for infn in sys.stdin]
-p = Pool(None)
-p.map(process, fns)
-print("Done!")
+files = [infn.rstrip() for infn in sys.stdin]
 
-"""
-children = 0
-dataln = [[],[],[],[]]
-for i, infn in enumerate(sys.stdin):
-    dataln[i%4].append(infn.rstrip())
+mongoclient = pymongo.mongo_client.MongoClient()
 
-# this is stupid, but multiprocessing won't handle class
-# instance methods (pickling problems) and this should
-# work without refactoring the entire warc2mongodb library
-# and allow us to avoid reprocessing the nodemap file each
-# time (which is expensive)
-for i in range(4):
-    r = os.fork()
-    if not r:
-        # child process
-        from warc2mongodb import *
-        cf = contentfilterurlset(s)
-        sys.stderr.write("starting beautifulsoup mapper.\n")
-        processorbs = warcmongodbprocessorbs(contentfilter=cf)
-        for d in dataln[0]:
-            processorbs.process(d)
-        sys.stderr.write("starting readability mapper.\n")
-        processorrb = warcmongodbprocessorreadability(contentfilter=cf)
-        for d in dataln[0]:
-            processorrb.process(d)
-        sys.stderr.write("done!\n")
-        exit(0)
-    children += 1
-    # we've "given away" dataln[0]
-    dataln.pop(0)
+# XXX Avoid re-processing in the event of errors
+for i in xrange(243):
+    files.pop(0)
 
-# avoid orphaning the subprocesses
-while true:
-    os.wait()
-    sys.stderr.write("child process exited\n")
-    children -= 1
-    if children <= 0:
-        exit(0)
-"""
+p = Pool(8)
+process = partial(warc_to_text, discardfilter=get_content_filter_keepset(s))
+
+
+p.map(process, files, 1)
+#for tup in imap(process, files):
+#for tup in p.imap(process, files):
+#    url, text = tup
+#    mongoclient.warctext.bs.save({'_id' : url, 'value' :text})
+sys.stderr.write("Done!\n")
+
+
